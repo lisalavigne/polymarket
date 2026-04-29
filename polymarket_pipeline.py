@@ -521,7 +521,24 @@ def load_event_filter_config(config_path: Path = EVENT_FILTER_CONFIG_PATH) -> di
     return DEFAULT_EVENT_FILTER_CONFIG
 
 
+def _log_config_keys(label: str, config: dict) -> None:
+    keys = sorted(str(k) for k in config.keys()) if isinstance(config, dict) else []
+    print(f"[config] {label}_keys={keys}")
+
+
+def _log_nested_config_fields(label: str, config: dict) -> None:
+    if not isinstance(config, dict):
+        return
+    for topic_key in sorted(config.keys(), key=lambda x: str(x)):
+        topic_value = config.get(topic_key)
+        if isinstance(topic_value, dict):
+            field_keys = sorted(str(k) for k in topic_value.keys())
+            print(f"[config] {label}.{topic_key}_fields={field_keys}")
+
+
 EVENT_FILTER_CONFIG = load_event_filter_config()
+_log_config_keys("event_filter_config", EVENT_FILTER_CONFIG)
+_log_nested_config_fields("event_filter_config", EVENT_FILTER_CONFIG)
 BUSINESS_RELEVANCE_KEYWORDS = EVENT_FILTER_CONFIG.get("default", {}).get("keywords", DEFAULT_EVENT_FILTER_CONFIG["default"]["keywords"])
 
 DEFAULT_AI_TOPIC_CONFIG = {
@@ -547,6 +564,7 @@ def load_ai_topic_config(config_path: Path = AI_TOPIC_CONFIG_PATH) -> dict:
 
 
 AI_TOPIC_CONFIG = load_ai_topic_config()
+_log_config_keys("ai_topic_config", AI_TOPIC_CONFIG)
 
 
 def get_ai_topic_config(topic_name: Optional[str] = None, overrides: Optional[dict] = None) -> dict:
@@ -634,16 +652,35 @@ def filter_events(
     """
     events_df_clean = events_df.drop_duplicates("slug").copy()
     scored = score_event_relevance(events_df_clean, keywords=keywords)
-    filtered = scored[
-        (scored["volume"] >= min_volume)
-        & (scored["liquidity"] >= min_liquidity)
-        & (scored["combined_hit_count"] >= min_keyword_hits)
+    keyword_match_counts = {}
+    if keywords:
+        for keyword in keywords:
+            keyword_lc = str(keyword).lower()
+            matched = (
+                scored["event_text_blob"].str.contains(keyword_lc, regex=False, na=False)
+                | scored["event_label_blob"].str.contains(keyword_lc, regex=False, na=False)
+            )
+            count = int(matched.sum())
+            if count > 0:
+                keyword_match_counts[str(keyword)] = count
+    key_match_events = scored[
+        scored["combined_hit_count"] >= min_keyword_hits
     ].copy()
+    materiality_match_events = key_match_events[
+        (key_match_events["volume"] >= min_volume)
+        & (key_match_events["liquidity"] >= min_liquidity)
+    ].copy()
+    filtered = materiality_match_events.copy()
     filtered = filtered.sort_values(
         ["relevance_score", "volume24hr", "volume", "liquidity"],
         ascending=False,
     )
-    return filtered.head(top_n)
+    filtered = filtered.head(top_n)
+    filtered.attrs["input_event_count"] = len(events_df_clean)
+    filtered.attrs["key_match_event_count"] = len(key_match_events)
+    filtered.attrs["materiality_match_event_count"] = len(materiality_match_events)
+    filtered.attrs["keyword_match_counts"] = keyword_match_counts
+    return filtered
 
 def process_events_in_chunks(
     events_df_full,
@@ -677,12 +714,19 @@ def process_events_in_chunks(
     print(
         "[event-filter] "
         f"theme={theme_name or 'default'} "
-        f"input_events={len(events_df_full.drop_duplicates('slug'))} "
+        f"input_events={filtered_events_df.attrs.get('input_event_count', len(events_df_full.drop_duplicates('slug')))} "
+        f"key_match_events={filtered_events_df.attrs.get('key_match_event_count', len(filtered_events_df))} "
+        f"materiality_match_events={filtered_events_df.attrs.get('materiality_match_event_count', len(filtered_events_df))} "
         f"filtered_events={len(filtered_events_df)} "
         f"min_volume={min_volume} "
         f"min_liquidity={min_liquidity} "
         f"min_keyword_hits={min_keyword_hits} "
         f"top_n={top_n}"
+    )
+    print(
+        "[event-filter-keys] "
+        f"theme={theme_name or 'default'} "
+        f"keyword_match_counts={filtered_events_df.attrs.get('keyword_match_counts', {})}"
     )
     keep_cols = [c for c in event_columns if c in filtered_events_df.columns]
     return filtered_events_df[keep_cols].copy()
