@@ -53,6 +53,7 @@ flowchart TD
 ├── README.md
 ├── requirements.txt
 ├── polymarket_pipeline.py
+├── polymarket_pipeline_no_volume.py
 ├── polymarket_pipeline.txt
 ├── polymarket_refined.ipynb
 ├── polymarket_llm_pipeline.py
@@ -260,6 +261,18 @@ python polymarket_pipeline.py
 POLYMARKET_OUTPUT_DIR=/path/to/output python polymarket_pipeline.py
 ```
 
+### Run without historical volume
+
+If you want a clean output set that skips the trades API and avoids empty volume workbooks:
+
+```bash
+python polymarket_pipeline_no_volume.py
+```
+
+This writes to:
+
+- `polymarket_output/no_volume/`
+
 ### Run as a module
 
 ```python
@@ -358,6 +371,94 @@ If you are extending the repo, the best places to start are:
 - add CI checks for linting and script compilation
 - add a lightweight schema contract for AI outputs
 - add a sample `.env.example`
+
+## Improvements Implemented
+
+The current repository already includes a substantial round of hardening and refinement from the original notebook workflow.
+
+### Pipeline and architecture
+
+- converted the notebook workflow into a runnable Python pipeline with `run_pipeline(...)` and `main()`
+- added a stable default export directory so runs produce files automatically
+- added structured progress logging across fetch, universe, history, ranking, AI, and export stages
+- synced a text copy of the main script for easier review and sharing
+
+### Data quality and filtering
+
+- enforced active and open event filtering in the normalized universe
+- replaced the legacy AI-based event prefilter with a deterministic multi-topic event filter
+- added topic-aware event filtering using configurable keyword, liquidity, and volume thresholds
+- expanded event relevance scoring to include event labels and tag labels, not only free text
+- externalized event filter settings into `event_filter_config.json`
+
+### Price and volume history
+
+- fixed incomplete daily price-history behavior caused by timestamp handling during reindexing
+- changed price-history fetching to use finer-grained data before daily aggregation
+- added historical traded-volume collection from the Polymarket trades API
+- added trade-volume reconciliation against snapshot `volume` and `volume24hr`
+- added combined daily price + volume history output
+- added market coverage and missing-date diagnostics
+- fixed the missing `conditionId` normalization issue that caused empty volume-history outputs
+- hardened the trade-history path for highly active markets by handling the public API pagination cap gracefully
+- added explicit logging when trade history is truncated by the API
+
+### AI workflow and hallucination reduction
+
+- changed the AI flow to a two-stage process: shortlist first, commentary second
+- separated market picking from event picking
+- added per-topic AI batching and shortlist caps via `ai_topic_config.json`
+- aligned prompt caps with actual per-topic configuration instead of a hardcoded top-10 assumption
+- preserved deterministic signal ordering when applying final market and event caps
+- added retry logic for stage-two commentary when the AI returned incomplete coverage
+- dropped incomplete AI rows after retry instead of exporting partially populated records
+
+### Export and usability
+
+- added exports for volume history, reconciliation, combined daily price-volume history, and coverage audits
+- fixed Excel export failures by converting timezone-aware datetimes to timezone-naive local timestamps
+- added repo-level documentation and installation metadata for GitHub consumption
+
+## Backlog
+
+The following ideas are intentionally left as future work.
+
+### Near-term cleanup
+
+- split `polymarket_pipeline.py` into modules such as `fetch`, `history`, `signals`, `ai`, and `export`
+- remove notebook-era duplicate imports and tighten dependency hygiene
+- replace ad hoc constants with a clearer config layer
+- rename legacy helper functions whose names no longer match behavior
+
+### Reliability and testing
+
+- add unit tests for event filtering, signal ranking, and export formatting
+- add regression tests for volume history, reconciliation, and truncation handling
+- add schema validation for AI responses before materialization
+- add smoke tests for a no-AI run and a fully configured AI run
+
+### Repository and developer experience
+
+- add `.env.example`
+- add a `LICENSE`
+- add GitHub Actions for compile and lint checks
+- add issue templates and a pull request template
+- add a small `Makefile` or task runner for common commands
+
+### Product and analytics enhancements
+
+- support thematic inheritance across tags, such as letting Economy absorb macro-relevant Finance and Politics markets
+- add explicit flags for truncated trade-history markets in exported workbooks
+- add richer reconciliation diagnostics for price/volume mismatches
+- add topic-level summary sheets for candidate counts, shortlist counts, and final outputs
+- add configurable ranking formulas for different business use cases
+
+### AI and research workflow
+
+- add optional human-review checkpoints before final commentary generation
+- add structured citation support or evidence snippets in commentary outputs
+- add selective reruns for a single topic or a single failed market/event batch
+- add prompt versioning so output changes can be audited over time
 
 ## Status
 

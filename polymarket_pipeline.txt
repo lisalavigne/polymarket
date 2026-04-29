@@ -1544,6 +1544,7 @@ def build_history_and_feature_data(
     volume_bucket_freq: str = "1D",
     volume_limit: int = 500,
     z_window: int = 7,
+    include_volume_history: bool = True,
 ) -> dict[str, pd.DataFrame]:
     price_history_df = build_price_history_from_prices_long(
         prices_long_df_filtered,
@@ -1556,28 +1557,33 @@ def build_history_and_feature_data(
         f"unique_tokens={price_history_df['token_id'].nunique() if 'token_id' in price_history_df.columns and not price_history_df.empty else 0}"
     )
 
-    volume_history_df = (
-        build_trade_volume_history_from_markets(
-            markets_filtered,
-            market_col="conditionId",
-            bucket_freq=volume_bucket_freq,
-            limit=volume_limit,
+    if include_volume_history:
+        volume_history_df = (
+            build_trade_volume_history_from_markets(
+                markets_filtered,
+                market_col="conditionId",
+                bucket_freq=volume_bucket_freq,
+                limit=volume_limit,
+            )
+            if "conditionId" in markets_filtered.columns
+            else pd.DataFrame()
         )
-        if "conditionId" in markets_filtered.columns
-        else pd.DataFrame()
-    )
 
-    volume_reconciliation_df = (
-        reconcile_trade_volume_to_market_snapshots(
-            volume_history_df,
-            markets_filtered,
-            market_col="conditionId",
-            snapshot_total_volume_col="volume",
-            snapshot_24hr_volume_col="volume24hr",
+        volume_reconciliation_df = (
+            reconcile_trade_volume_to_market_snapshots(
+                volume_history_df,
+                markets_filtered,
+                market_col="conditionId",
+                snapshot_total_volume_col="volume",
+                snapshot_24hr_volume_col="volume24hr",
+            )
+            if not volume_history_df.empty and "conditionId" in markets_filtered.columns
+            else pd.DataFrame()
         )
-        if not volume_history_df.empty and "conditionId" in markets_filtered.columns
-        else pd.DataFrame()
-    )
+    else:
+        print("[history-volume] skipped: include_volume_history=False")
+        volume_history_df = pd.DataFrame()
+        volume_reconciliation_df = pd.DataFrame()
 
     daily_features_df = build_daily_features(
         price_history_df,
@@ -1627,6 +1633,7 @@ def build_history_and_feature_data(
         "daily_price_volume_features_df": daily_price_volume_features_df,
         "market_coverage_summary_df": market_coverage_summary_df,
         "market_missing_dates_df": market_missing_dates_df,
+        "include_volume_history": include_volume_history,
     }
 
 
@@ -3013,6 +3020,7 @@ def prepare_excel_export_frame(frame: pd.DataFrame, timezone_name: str = "US/Eas
 def export_pipeline_outputs(results: dict, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"[export] output_dir={output_dir}")
+    include_volume_history = bool(results.get("include_volume_history", True))
 
     df_markets = results.get("df_markets", pd.DataFrame())
     df_events = results.get("df_events", pd.DataFrame())
@@ -3039,16 +3047,22 @@ def export_pipeline_outputs(results: dict, output_dir: Path) -> None:
         daily_features_export.to_excel(output_dir / "Price History.xlsx", index=False)
         print(f"[export] wrote Price History.xlsx rows={len(daily_features_export)}")
 
-    for key, filename in [
-        ("daily_price_volume_features_df", "Daily Price Volume History.xlsx"),
-        ("volume_history_df", "Volume History.xlsx"),
-        ("volume_reconciliation_df", "Volume Reconciliation.xlsx"),
-        ("market_coverage_summary_df", "Market Coverage Summary.xlsx"),
-        ("market_missing_dates_df", "Market Missing Dates.xlsx"),
+    export_items = [
         ("markets_filtered", "Filtered Markets.xlsx"),
         ("events_df_selected", "Events.xlsx"),
         ("df_event_tags", "Events Tags.xlsx"),
-    ]:
+    ]
+    if include_volume_history:
+        export_items = [
+            ("daily_price_volume_features_df", "Daily Price Volume History.xlsx"),
+            ("volume_history_df", "Volume History.xlsx"),
+            ("volume_reconciliation_df", "Volume Reconciliation.xlsx"),
+            ("market_coverage_summary_df", "Market Coverage Summary.xlsx"),
+            ("market_missing_dates_df", "Market Missing Dates.xlsx"),
+            *export_items,
+        ]
+
+    for key, filename in export_items:
         frame = results.get(key, pd.DataFrame())
         if isinstance(frame, pd.DataFrame):
             export_frame = prepare_excel_export_frame(frame)
@@ -3065,6 +3079,7 @@ def run_pipeline(
     run_ai: bool = True,
     export: bool = True,
     output_dir: Optional[Path] = None,
+    include_volume_history: bool = True,
 ) -> dict:
     tags_df = tags_df.copy() if tags_df is not None else DEFAULT_TAGS_DF.copy()
     resolved_output_dir = output_dir or DEFAULT_OUTPUT_DIR
@@ -3073,6 +3088,7 @@ def run_pipeline(
         f"tags={len(tags_df)} "
         f"run_ai={run_ai} "
         f"export={export} "
+        f"include_volume_history={include_volume_history} "
         f"output_dir={resolved_output_dir if export else 'disabled'}"
     )
 
@@ -3098,6 +3114,7 @@ def run_pipeline(
     history_results = build_history_and_feature_data(
         selected_universe["prices_long_df_filtered"],
         selected_universe["markets_filtered"],
+        include_volume_history=include_volume_history,
     )
 
     ranking_results = build_ranked_markets(
