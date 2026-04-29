@@ -1,0 +1,65 @@
+{
+  "default": {
+    "market_top_n": 150,
+    "event_top_n": 100,
+    "top_k_markets": 3,
+    "event_batch_size": 12,
+    "max_markets_per_batch": 60,
+    "final_market_cap": 10,
+    "final_event_cap": 10
+  },
+  "geopolitics": {
+    "market_top_n": 180,
+    "event_top_n": 120,
+    "top_k_markets": 4,
+    "event_batch_size": 10,
+    "max_markets_per_batch": 70,
+    "final_market_cap": 12,
+    "final_event_cap": 10
+  },
+  "economy": {
+    "market_top_n": 140,
+    "event_top_n": 90,
+    "top_k_markets": 3,
+    "event_batch_size": 10,
+    "max_markets_per_batch": 60,
+    "final_market_cap": 10,
+    "final_event_cap": 8
+  },
+  "tech": {
+    "market_top_n": 120,
+    "event_top_n": 70,
+    "top_k_markets": 3,
+    "event_batch_size": 8,
+    "max_markets_per_batch": 50,
+    "final_market_cap": 8,
+    "final_event_cap": 6
+  },
+  "finance": {
+    "market_top_n": 140,
+    "event_top_n": 80,
+    "top_k_markets": 3,
+    "event_batch_size": 10,
+    "max_markets_per_batch": 55,
+    "final_market_cap": 10,
+    "final_event_cap": 8
+  },
+  "politics": {
+    "market_top_n": 130,
+    "event_top_n": 80,
+    "top_k_markets": 3,
+    "event_batch_size": 10,
+    "max_markets_per_batch": 55,
+    "final_market_cap": 10,
+    "final_event_cap": 8
+  },
+  "crypto": {
+    "market_top_n": 120,
+    "event_top_n": 70,
+    "top_k_markets": 3,
+    "event_batch_size": 8,
+    "max_markets_per_batch": 50,
+    "final_market_cap": 8,
+    "final_event_cap": 6
+  }
+}
