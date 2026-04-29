@@ -1,0 +1,8 @@
+numpy
+pandas
+python-dateutil
+requests
+openai
+azure-identity
+xlsxwriter
+pytz
