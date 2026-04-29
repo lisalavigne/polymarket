@@ -1838,31 +1838,30 @@ def rank_moving_markets(
 # outcomes = '["Yes", "No"]'
 # outcomePrices = '["0.9", "0.1"]'
 
-import ast
-import pandas as pd
-
 def extract_yes_no_prices(row):
-    # Parse the string representation to Python list if necessary
-    # If already lists, skip parsing
-    outcomes = row['outcomes']
-    outcomePrices = row['outcomePrices']
+    outcomes = safe_list(row.get("outcomes"))
+    outcome_prices = safe_list(row.get("outcomePrices"))
 
-    if isinstance(outcomes, str):
-        try:
-            outcomes = ast.literal_eval(outcomes)
-        except Exception:
-            outcomes = []
-    if isinstance(outcomePrices, str):
-        try:
-            outcomePrices = ast.literal_eval(outcomePrices)
-        except Exception:
-            outcomePrices = []
+    # Build a normalized outcome -> price map that survives malformed/null rows.
+    price_map = {
+        str(outcome).strip().upper(): price
+        for outcome, price in zip(outcomes, outcome_prices)
+        if outcome is not None
+    }
 
-    # Create a mapping of outcome -> price
-    price_map = dict(zip(outcomes, outcomePrices))
+    yes_price = None
+    no_price = None
 
-    yes_price = price_map.get("Yes", None)
-    no_price = price_map.get("No", None)
+    for yes_key, no_key in [
+        ("YES", "NO"),
+        ("UP", "DOWN"),
+        ("HIGH", "LOW"),
+        ("ABOVE", "BELOW"),
+    ]:
+        if yes_key in price_map or no_key in price_map:
+            yes_price = price_map.get(yes_key, None)
+            no_price = price_map.get(no_key, None)
+            break
 
     # Convert to float if possible
     try:
